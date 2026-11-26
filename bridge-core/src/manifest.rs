@@ -101,11 +101,26 @@ pub struct BridgeMeta {
     pub actions: Vec<ActionMap>,
 }
 
+/// Manifest bytes as text. Plugin makers save these files in whatever their editor offers:
+/// UTF-8 (with or without a BOM) is the norm, but UTF-16 with a BOM happens, and so do legacy
+/// code pages; those bytes become U+FFFD, which only touches text values, never the JSON structure.
+pub fn decode_text(bytes: &[u8]) -> String {
+    let utf16 = |b: &[u8], be: bool| {
+        let units: Vec<u16> = b.chunks_exact(2).map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) }).collect();
+        String::from_utf16_lossy(&units)
+    };
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, false),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, true),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        _ => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
 pub fn parse(dir: &Path) -> Result<SdManifest> {
     let p = dir.join("manifest.json");
-    let raw = std::fs::read_to_string(&p).with_context(|| format!("no manifest.json in {}", dir.display()))?;
-    // Real manifests are plain JSON, but some carry a BOM.
-    let m: SdManifest = serde_json::from_str(raw.trim_start_matches('\u{feff}')).context("manifest.json is not valid")?;
+    let raw = std::fs::read(&p).with_context(|| format!("no manifest.json in {}", dir.display()))?;
+    let m: SdManifest = serde_json::from_str(&decode_text(&raw)).context("manifest.json is not valid JSON")?;
     Ok(m)
 }
 
@@ -265,6 +280,21 @@ mod tests {
         assert_eq!(g.actions["actions"][2]["states"][1]["label"], "On");
         assert_eq!(g.actions["actions"][0]["inputs"][0]["key"], "sd_ref");
         assert!(g.actions_map[0].id.starts_with("sd-com-acme-thing-count-key-"));
+    }
+
+    #[test]
+    fn manifests_in_other_encodings_read() {
+        let json = r#"{"UUID":"a.b","Name":"Nova 시계","Actions":[]}"#;
+        let u16le: Vec<u8> = [0xFF, 0xFE].into_iter().chain(json.encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        assert!(serde_json::from_str::<SdManifest>(&decode_text(&u16le)).is_ok());
+        let bom: Vec<u8> = [0xEF, 0xBB, 0xBF].into_iter().chain(json.bytes()).collect();
+        assert!(serde_json::from_str::<SdManifest>(&decode_text(&bom)).is_ok());
+        // A legacy code page: the bytes are not UTF-8, the structure still parses.
+        let mut legacy = br#"{"UUID":"a.b","Name":"Nova "#.to_vec();
+        legacy.extend([0xBD, 0xC3, 0xB0, 0xE8]);
+        legacy.extend(br#"","Actions":[]}"#);
+        let m: SdManifest = serde_json::from_str(&decode_text(&legacy)).unwrap();
+        assert_eq!(m.uuid, "a.b");
     }
 
     #[test]
