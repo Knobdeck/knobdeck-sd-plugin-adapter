@@ -22,8 +22,8 @@ jobs:
       matrix:
         include:
           - { runner: ubuntu-22.04, platform: linux-x86_64 }   # glibc 2.35: Debian 12+, Ubuntu 22.04+, Arch
-          - { runner: macos-14, platform: macos-aarch64 }
-          - { runner: macos-13, platform: macos-x86_64 }
+          - { runner: macos-latest, platform: macos-aarch64 }
+          - { runner: macos-15-intel, platform: macos-x86_64 }
           - { runner: windows-latest, platform: windows-x86_64 }
     runs-on: ${{ matrix.runner }}
     steps:
