@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "knobdeck-sd-plugin-adapter",
+  "name": "SD Plugin Adapter",
+  "description": "Runs plugins made for Stream Deck inside KnobDeck.",
+  "author": "KnobDeck",
+  "run":       { "args": ["daemon"] },
+  "stop":      { "args": ["stop"] },
+  "status":    { "args": ["status"] },
+  "open":      { "args": ["open"] },
+  "uninstall": { "args": ["uninstall"] }
+}

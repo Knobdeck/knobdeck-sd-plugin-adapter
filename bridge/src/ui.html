@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KnobDeck SD Plugin Adapter</title>
+<style>
+:root{color-scheme:dark;--bg:#16171a;--card:#1f2024;--line:#2f3138;--fg:#e8e9ec;--mut:#9a9ca5;--acc:#6ea8ff;--bad:#ff7b72}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 20px}
+h1{font-size:20px;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 24px}
+.drop{border:1.5px dashed var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--mut);cursor:pointer;transition:.15s}
+.drop.over{border-color:var(--acc);color:var(--fg);background:#1b2230}
+.drop b{color:var(--fg)}
+.note{margin:12px 0 0;min-height:20px;color:var(--mut)}.note.err{color:var(--bad)}
+h2{font-size:13px;color:var(--mut);font-weight:600;margin:28px 0 8px;letter-spacing:.02em}
+.row{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.row .t{flex:1;min-width:0}.row .t div:first-child{font-weight:600}.row .t div:last-child{color:var(--mut);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--bad);color:var(--bad)}
+.empty{color:var(--mut);padding:8px 2px}.foot{margin-top:28px;color:var(--mut);font-size:12.5px}
+</style></head><body><main>
+<h1>SD Plugin Adapter</h1>
+<p class="sub">Runs plugins made for Stream Deck inside KnobDeck. Plugins come from you; none are included.</p>
+<label class="drop" id="drop"><input id="file" type="file" accept=".streamDeckPlugin,.zip" hidden>
+  <div><b>Drop a .streamDeckPlugin file here</b> or click to choose one</div></label>
+<div class="note" id="note"></div>
+<h2>INSTALLED PLUGINS</h2>
+<div id="list"></div>
+<div class="foot">After adding or removing a plugin, restart KnobDeck so it shows up in Plugins. Plugins run as ordinary programs on your computer: only add ones you trust.</div>
+</main>
+<script>
+const T = new URLSearchParams(location.search).get("t") || sessionStorage.getItem("t") || "";
+sessionStorage.setItem("t", T); history.replaceState(null, "", location.pathname);
+const H = { "x-adapter-token": T };
+const $ = (id) => document.getElementById(id);
+const note = (m, err) => { $("note").textContent = m; $("note").className = "note" + (err ? " err" : ""); };
+async function load() {
+  const r = await fetch("/api/state", { headers: H });
+  if (!r.ok) { $("list").innerHTML = '<div class="empty">Open this page from KnobDeck (Adapters → Open).</div>'; return; }
+  const s = await r.json();
+  $("list").innerHTML = s.plugins.length ? "" : '<div class="empty">Nothing installed yet.</div>';
+  for (const p of s.plugins) {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = '<div class="t"><div></div><div></div></div><button>Remove</button>';
+    row.querySelector(".t div:first-child").textContent = p.name + " " + p.version;
+    row.querySelector(".t div:last-child").textContent = p.actions + " action" + (p.actions === 1 ? "" : "s") + " · " + p.uuid;
+    row.querySelector("button").onclick = async () => {
+      if (!confirm("Remove " + p.name + "? Its settings are kept.")) return;
+      await fetch("/api/remove", { method: "POST", headers: H, body: JSON.stringify({ uuid: p.uuid }) });
+      note("Removed " + p.name + ". Restart KnobDeck to refresh the plugin list."); load();
+    };
+    $("list").appendChild(row);
+  }
+}
+async function send(f) {
+  note("Installing " + f.name + "…");
+  const r = await fetch("/api/import", { method: "POST", headers: { ...H, "x-filename": encodeURIComponent(f.name) }, body: f });
+  const j = await r.json().catch(() => ({ error: "unexpected answer" }));
+  if (!r.ok) return note(j.error || "Could not install it", true);
+  note("Installed " + j.name + "." + (j.notes.length ? " " + j.notes.join(" ") : "") + " Restart KnobDeck to see it in Plugins.");
+  load();
+}
+$("file").onchange = (e) => e.target.files[0] && send(e.target.files[0]);
+const d = $("drop");
+for (const ev of ["dragenter", "dragover"]) d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.add("over"); });
+for (const ev of ["dragleave", "drop"]) d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.remove("over"); });
+d.addEventListener("drop", (e) => e.dataTransfer.files[0] && send(e.dataTransfer.files[0]));
+load();
+</script></body></html>

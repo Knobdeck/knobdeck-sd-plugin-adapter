@@ -1,0 +1,17 @@
+{
+  "UUID": "dev.knobdeck.hello-sd",
+  "Name": "Hello (Stream Deck test)",
+  "Version": "0.1.0.0",
+  "Author": "KnobDeck test",
+  "Description": "A tiny Stream Deck plugin to test the bridge: a counter key, an on/off key and a dial.",
+  "SDKVersion": 2,
+  "CodePath": "bin/plugin.js",
+  "PropertyInspectorPath": "ui/pi.html",
+  "Nodejs": { "Version": "20" },
+  "OS": [{ "Platform": "mac", "MinimumVersion": "12" }, { "Platform": "windows", "MinimumVersion": "10" }, { "Platform": "linux", "MinimumVersion": "1" }],
+  "Actions": [
+    { "UUID": "dev.knobdeck.hello-sd.count", "Name": "Count", "Tooltip": "Counts presses.", "Controllers": ["Keypad"], "States": [{}] },
+    { "UUID": "dev.knobdeck.hello-sd.switch", "Name": "Switch", "Tooltip": "Flips between Off and On.", "Controllers": ["Keypad"], "States": [{ "Name": "Off" }, { "Name": "On" }], "PropertyInspectorPath": "ui/pi.html" },
+    { "UUID": "dev.knobdeck.hello-sd.dial", "Name": "Dial", "Tooltip": "Shows the dial's ticks.", "Controllers": ["Encoder"], "States": [{}] }
+  ]
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Hello PI</title>
+<style>body{font:14px sans-serif;background:#2d2d2d;color:#ddd;padding:16px}input{padding:6px;width:240px}</style></head>
+<body>
+<h3>Hello (Stream Deck test)</h3>
+<label>Name <input id="name" placeholder="shown on the key"></label>
+<p id="status"></p>
+<script>
+let ws, uuid, settings = {};
+window.connectElgatoStreamDeckSocket = (port, inspectorUUID, registerEvent, info, actionInfo) => {
+  uuid = inspectorUUID;
+  settings = JSON.parse(actionInfo).payload.settings || {};
+  document.getElementById("name").value = settings.name || "";
+  ws = new WebSocket("ws://127.0.0.1:" + port);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ event: registerEvent, uuid }));
+    document.getElementById("status").textContent = "Connected";
+    ws.send(JSON.stringify({ event: "sendToPlugin", context: uuid, payload: { hello: "from the inspector" } }));
+  };
+  ws.onmessage = (m) => { const e = JSON.parse(m.data); if (e.event === "didReceiveSettings") { settings = e.payload.settings; } };
+};
+document.getElementById("name").addEventListener("input", (ev) => {
+  settings.name = ev.target.value;
+  ws.send(JSON.stringify({ event: "setSettings", context: uuid, payload: settings }));
+});
+</script>
+</body></html>

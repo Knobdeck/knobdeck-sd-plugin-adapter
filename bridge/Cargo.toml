@@ -1,0 +1,10 @@
+[package]
+name = "knobdeck-sd-plugin-adapter"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+bridge-core = { path = "../bridge-core" }
+tungstenite = "0.24"

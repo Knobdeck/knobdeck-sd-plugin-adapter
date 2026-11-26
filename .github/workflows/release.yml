@@ -1,0 +1,79 @@
+# Every push to master builds the adapter for every platform; a version that has no release yet is
+# published as v<version> (bump `version` in bridge/Cargo.toml to ship). Pull requests only build + test.
+# After a release the registry is told (needs the KnobDeck Catalog GitHub App: variable CATALOG_APP_ID +
+# secret CATALOG_APP_PRIVATE_KEY); without it the registry's nightly build picks the release up.
+name: release
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  GH_TOKEN: ${{ github.token }}
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, platform: linux-x86_64 }   # glibc 2.35: Debian 12+, Ubuntu 22.04+, Arch
+          - { runner: macos-14, platform: macos-aarch64 }
+          - { runner: macos-13, platform: macos-x86_64 }
+          - { runner: windows-latest, platform: windows-x86_64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo build --release --workspace
+      - run: python3 scripts/package.py ${{ matrix.platform }}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adapter-${{ matrix.platform }}
+          path: dist/*
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: "adapter-*", path: dist, merge-multiple: true }
+      - name: Release v<version> (once)
+        id: rel
+        run: |
+          version=$(sed -nE 's/^version *= *"([^"]+)".*/\1/p' bridge/Cargo.toml | head -1)
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released; bump the version to ship a new build."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          else
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "SD Plugin Adapter $version" \
+              --notes "Built from $GITHUB_SHA. Install it from KnobDeck: Adapters." --latest=false
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Catalog app token
+        id: app
+        if: steps.rel.outputs.released == 'true' && vars.CATALOG_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CATALOG_APP_ID }}
+          private-key: ${{ secrets.CATALOG_APP_PRIVATE_KEY }}
+          owner: Knobdeck
+          repositories: knobdeck-registry
+      - name: Tell the registry
+        if: steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg tag "${{ steps.rel.outputs.tag }}" \
+            '{event_type: "adapter-released", client_payload: {repo: $repo, tag: $tag}}' |
+            gh api repos/Knobdeck/knobdeck-registry/dispatches --input -
